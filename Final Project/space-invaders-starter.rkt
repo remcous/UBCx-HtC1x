@@ -107,3 +107,227 @@
 (define G2 (make-game (list I1) (list M1) T1))
 (define G3 (make-game (list I1 I2) (list M1 M2) T1))
 
+
+
+
+;; ListOfInvader is one of:
+;; - empty
+;; - (cons Invader ListOfInvader)
+;; Interp. A list of invader objects
+
+(define LOI1 empty)
+(define LOI2 (cons I1 (cons I2 empty)))
+
+(define (fn-for-loinvader loinvader)
+  (cond [(empty? loinvader) (...)]   ;; Base case - empty list
+        [else (... (first loinvader) ;; Invader
+                   (fn-for-loinvader (rest loinvader)))])) ;; Natural recursion
+
+
+;; ListOfMissiles is one of:
+;; - empty
+;; - (cons Missile ListOfMissile)
+;; Interp. A list of Missile objects
+
+(define LOM1 empty)
+(define LOM2 (cons M1 (cons M2 empty)))
+
+(define (fn-for-lom lom)
+  (cond [(empty? lom) (...)]
+        [else (... (first lom) ;; Missile
+                   (fn-for-lom (rest lom)))])) ;; Natural Recursion
+
+
+
+;; ---------------------------------------------------------------------------------------------
+;; FUNCTIONS
+;; ---------------------------------------------------------------------------------------------
+
+;; Game -> Game
+;; start the world with (main G0)
+
+(define (main s)
+  (big-bang s                  ;; Game
+    (on-tick update_positions) ;; Game -> Game
+    (to-draw render_all)       ;; Game -> Image
+    ))
+
+
+;; ---------------------------------------------------------------------------------------------
+;; UPDATE FUNCTIONS
+
+
+
+;; Game -> Game
+;; Update the position of all game objects and determine if an additional invader should spawn
+;; !!! Add tests for updating position 
+
+;(define (update_positions s) s) ;; Stub
+
+(define (update_positions s)
+  (make-game (update-invaders (game-invaders s))
+             (update-missiles (game-missiles s))
+             (update-tank (game-tank s))))
+
+
+
+;; ListOfInvaders -> ListOfInvaders
+;; Updates the position every invader in a list of invaders
+(check-expect (update-invaders empty) empty)
+(check-expect (update-invaders (cons (make-invader 150 200 1.5) empty))
+              (cons (update-invader (make-invader 150 200 1.5))
+                    empty))
+(check-expect (update-invaders (cons (make-invader 150 200 1.5) (cons (make-invader 200 300 -1.5) empty)))
+              (cons (update-invader (make-invader 150 200 1.5))
+                    (cons (update-invader (make-invader 200 300 -1.5))
+                          empty)))
+
+;(define (update-invaders loinvader) loinvader) ;; Stub
+
+(define (update-invaders loinvader)
+  (cond [(empty? loinvader) empty]
+        [else (cons (update-invader (first loinvader))
+                    (update-invaders (rest loinvader)))]))
+  
+
+
+;; Invader -> Invader
+;; Update the position of an individual invader
+(check-expect (update-invader (make-invader 150 200 INVADER-X-SPEED))
+              (make-invader (+ 150 INVADER-X-SPEED)
+                            (+ 200 INVADER-Y-SPEED)
+                            INVADER-X-SPEED))
+(check-expect (update-invader (make-invader 150 200 (- INVADER-X-SPEED)))
+              (make-invader (+ 150 (- INVADER-X-SPEED))
+                            (+ 200 INVADER-Y-SPEED)
+                            (- INVADER-X-SPEED)))
+(check-expect (update-invader (make-invader 1 200 -1.5)) ; Hit left wall
+              (make-invader (- (+ 1 -1.5))
+                            (+ 200 INVADER-Y-SPEED)
+                            (- -1.5)))
+(check-expect (update-invader (make-invader (- WIDTH 1) 200 1.5)) ; Hit right wall
+              (make-invader (- WIDTH (- (+ (- WIDTH 1) 1.5) WIDTH))
+                            (+ 200 INVADER-Y-SPEED)
+                            (- 1.5)))
+(check-expect (update-invader (make-invader 100 (- HEIGHT 1) -1.5)) ; Land moving left
+              (make-invader (+ 100 -1.5)
+                            HEIGHT
+                            -1.5))
+(check-expect (update-invader (make-invader 100 (- HEIGHT 1) 1.5)) ; Land moving right
+              (make-invader (+ 100 1.5)
+                            HEIGHT
+                            1.5))
+
+;(define (update-invader i) i) ;; Stub
+
+(define (update-invader i)
+  (cond [(>= (+ (invader-y i) INVADER-Y-SPEED) HEIGHT)  ; Landing case
+         (make-invader (+ (invader-x i) (invader-dx i))
+                       HEIGHT
+                       (invader-dx i))]
+        [(<= (+ (invader-x i) (invader-dx i)) 0)  ; Hit left wall
+         (make-invader (- (+ (invader-x i) (invader-dx i)))
+                       (+ (invader-y i) INVADER-Y-SPEED)
+                       (- (invader-dx i)))]
+        [(>= (+ (invader-x i) (invader-dx i)) WIDTH)  ; Hit right wall
+         (make-invader (- WIDTH (- (+ (invader-x i) (invader-dx i)) WIDTH))
+                       (+ (invader-y i) INVADER-Y-SPEED)
+                       (- (invader-dx i)))]
+        [else ; Base case
+         (make-invader (+ (invader-x i) (invader-dx i))
+                       (+ (invader-y i) INVADER-Y-SPEED)
+                       (invader-dx i))]))
+
+
+
+;; ListOfInvaders -> ListOfInvaders
+;; determine if an invader should be spawned, if so adds it to the list
+;; !!!
+(define (add-invader? loi) loi)
+
+
+;; ListOfMissiles -> ListOfMissiles
+;; Update the position of every missile in the list of missiles
+;; !!!
+(check-expect (update-missiles empty) empty)
+(check-expect (update-missiles (cons (make-missile 100 20)
+                                     (cons (make-missile 40 300)
+                                           empty)))
+              (cons (update-missile (make-missile 100 20))
+                    (cons (update-missile (make-missile 40 300))
+                          empty)))
+
+;(define (update-missiles lom) lom) ; Stub
+
+(define (update-missiles lom)
+  (cond [(empty? lom) empty]
+        [else (cons (update-missile (first lom))
+                    (update-missiles (rest lom)))]))
+
+
+
+;; Missile -> Missile
+;; Update the position of a single missile based on MISSILE-SPEED
+(check-expect (update-missile (make-missile 100 20))
+              (make-missile 100
+                            (- 20 MISSILE-SPEED)))
+(check-expect (update-missile (make-missile 40 300))
+              (make-missile 40
+                            (- 300 MISSILE-SPEED)))
+
+;(define (update-missile m) m) ; Stub
+
+(define (update-missile m)
+  (make-missile (missile-x m)
+                (- (missile-y m) MISSILE-SPEED)))
+
+
+
+;; Tank -> Tank
+;; Moves the tank in its current direction, stop when hitting the edge of the screen
+;; !!!
+(check-expect (update-tank (make-tank 0 -1)) ; Start at left wall
+              (make-tank 0 -1))
+(check-expect (update-tank (make-tank WIDTH 1)) ; Start at right wall
+              (make-tank WIDTH 1))
+(check-expect (update-tank (make-tank 1 -1)) ; Hit left wall
+              (make-tank 0 -1))
+(check-expect (update-tank (make-tank (- WIDTH 1) 1)) ; Hit right wall
+              (make-tank WIDTH 1))
+(check-expect (update-tank (make-tank 50 -1)) ; Move left
+              (make-tank (+ 50 (* -1 TANK-SPEED))
+                         -1))
+(check-expect (update-tank (make-tank 78 1)) ; Move right
+              (make-tank (+ 78 (* 1 TANK-SPEED))
+                         1))
+
+;(define (update-tank t) t) ; Stub
+
+(define (update-tank t)
+  (cond [(<=  (+ (tank-x t) (* (tank-dir t) TANK-SPEED)) 0) ; Hit left wall
+         (make-tank 0
+                    (tank-dir t))]
+        [(>=  (+ (tank-x t) (* (tank-dir t) TANK-SPEED)) WIDTH) ; Hit right wall
+         (make-tank WIDTH
+                    (tank-dir t))]
+        [else
+         (make-tank (+ (tank-x t) (* (tank-dir t) TANK-SPEED))
+                    (tank-dir t))]))
+
+
+
+;; ---------------------------------------------------------------------------------------------
+;; RENDER FUNCTIONS
+
+
+
+;; Game -> Image
+;; Render all currently existing objects in the Game object on the screen
+;; !!! Add tests and function definition
+(define (render_all s) BACKGROUND)
+
+;; ---------------------------------------------------------------------------------------------
+;; KEYBOARD HANDLER FUNCTIONS
+
+;; ---------------------------------------------------------------------------------------------
+;; STOP GAME FUNCTIONS

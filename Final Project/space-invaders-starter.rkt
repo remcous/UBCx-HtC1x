@@ -152,7 +152,9 @@
   (big-bang s                  ;; Game
     (on-tick update-positions) ;; Game -> Game
     (to-draw render-all)       ;; Game -> Image
-    ))
+    (on-key handle-key)        ;; Game KeyEvent -> Game
+    (stop-when invader-landed? ;; Game -> Boolean
+               game-over)))
 
 
 ;; ---------------------------------------------------------------------------------------------
@@ -167,8 +169,8 @@
 ;(define (update_positions s) s) ;; Stub
 
 (define (update-positions s)
-  (make-game (update-invaders (game-invaders s))
-             (update-missiles (game-missiles s))
+  (make-game (spawn-invader? (invader-hit-detection (update-invaders (game-invaders s)) (update-missiles (game-missiles s))))
+             (missile-hit-detection (update-invaders (game-invaders s)) (clean-missile-list (update-missiles (game-missiles s))))
              (update-tank (game-tank s))))
 
 
@@ -318,6 +320,132 @@
 
 
 
+;; ListOfMissiles -> ListOfMissiles
+;; Remove missiles that fly beyond the top of the screen (assume missile list sorted in order of increasing height)
+(check-expect (clean-missile-list empty) empty)
+(check-expect (clean-missile-list (list (make-missile 54 123)))
+              (list (make-missile 54 123)))
+(check-expect (clean-missile-list (list (make-missile 63 287)
+                                        (make-missile 123 123)
+                                        (make-missile 12 0)
+                                        (make-missile 43 -10)
+                                        (make-missile 213 -23)))
+              (list (make-missile 63 287)
+                    (make-missile 123 123)
+                    (make-missile 12 0)))
+
+;(define (clean-missile-list lom) lom) ; Stub
+
+(define (clean-missile-list lom)
+  (cond [(empty? lom) empty]
+        [(< (missile-y (first lom)) 0) empty]
+        [else (cons (first lom)
+                    (clean-missile-list (rest lom)))]))
+
+
+
+;; ListOfInvaders ListOfMissiles -> ListOfMissiles
+;; Returns a ListOfMissiles with any missiles that have hit invaders removed
+;; assume list of missiles and list of invaders sorted from bottom to top
+(check-expect (missile-hit-detection empty empty) empty)
+(check-expect (missile-hit-detection empty LOM2) LOM2)
+(check-expect (missile-hit-detection LOI2 empty) empty)
+(check-expect (missile-hit-detection LOI2 LOM2) LOM2)
+(check-expect (missile-hit-detection (list (make-invader 43 452 -2.5)
+                                           (make-invader 123 23 2.5))
+                                     (list (make-missile 43 430)
+                                           (make-missile 123 32)))
+              (list (make-missile 43 430)))
+(check-expect (missile-hit-detection (list (make-invader 43 452 -2.5)
+                                           (make-invader 123 23 2.5))
+                                     (list (make-missile 43 450)
+                                           (make-missile 123 23)))
+              empty)
+
+;(define (missile-hit-detection loi lom) lom) ; Stub
+
+(define (missile-hit-detection loi lom)
+  (cond [(empty? lom) empty]                                 ; Out of missiles
+
+        [(empty? loi) lom]                                   ; No invaders, all remaining missiles stay in LoM
+
+        [(and (< (abs (- (missile-x (first lom))             ; HIT
+                         (invader-x (first loi)))) HIT-RANGE)
+              (< (abs (- (missile-y (first lom))
+                         (invader-y (first loi)))) HIT-RANGE))
+         (missile-hit-detection loi (rest lom))]
+        
+        [(< (missile-y (first lom)) (invader-y (first loi))) ; Missile lower than Invader -> check rest of Invaders
+         (missile-hit-detection (rest loi) lom)]
+        
+        [else (cons (first lom)
+                    (missile-hit-detection loi (rest lom)))])) ; Missile above Invader -> check rest of Missiles
+
+
+;; ListOfInvaders ListOfMissiles -> ListOfInvaders
+;; Returns a ListOfInvaders with any invaders that have been hit by missiled removed
+(check-expect (invader-hit-detection empty empty) empty)
+(check-expect (invader-hit-detection empty LOM2) empty)
+(check-expect (invader-hit-detection LOI2 empty) LOI2)
+(check-expect (invader-hit-detection LOI2 LOM2) LOI2)
+(check-expect (invader-hit-detection (list (make-invader 43 452 -2.5)
+                                           (make-invader 123 23 2.5))
+                                     (list (make-missile 43 430)
+                                           (make-missile 123 32)))
+              (list (make-invader 43 452 -2.5)))
+(check-expect (invader-hit-detection (list (make-invader 43 452 -2.5)
+                                           (make-invader 123 23 2.5))
+                                     (list (make-missile 43 450)
+                                           (make-missile 123 23)))
+              empty)
+
+;(define (invader-hit-detection loi lom) loi) ; Stub
+
+(define (invader-hit-detection loi lom)
+  (cond [(empty? loi) empty]   ; Out of invaders
+        [(empty? lom) loi]     ; Out of missiles
+
+        [(and (< (abs (- (missile-x (first lom))             ; HIT
+                         (invader-x (first loi)))) HIT-RANGE)
+              (< (abs (- (missile-y (first lom))
+                         (invader-y (first loi)))) HIT-RANGE))
+         (invader-hit-detection (rest loi) lom)]
+        
+        [(< (invader-y (first loi)) (missile-y (first lom))) ; Invader below Missile -> check rest of Missiles
+         (invader-hit-detection loi (rest lom))]
+        
+        [else (cons (first loi)
+                    (invader-hit-detection (rest loi) lom))])) ; Invader above Missile -> check rest of Invaders
+
+
+
+;; ListOfInvaders -> ListOfInvaders
+;; Using the INVADER-RATE and a random number generator to detemine if a new invader should be spawned at the top of the screen
+(check-random (spawn-invader? empty) (insert-invader empty))
+(check-expect (spawn-invader? LOI2) LOI2)
+
+;(define (spawn-invader? loi) loi) ; Stub
+
+(define (spawn-invader? loi)
+  (cond [(empty? loi) (insert-invader loi)]
+        [else (if (< (random INVADE-RATE) 2)
+                  (insert-invader loi)
+                  loi)]))
+
+;; ListOfInvaders -> ListOfInvaders
+;; Insert an invader into the list of invaders at the to the front of the list to ensure that
+;; order of list of invaders is in order from bottom to top when adding invader at top of screen
+(check-random (insert-invader empty) (list (make-invader (random WIDTH) 0 INVADER-X-SPEED)))
+(check-random (insert-invader LOI2) (append LOI2 (cons (make-invader (random WIDTH) 0 INVADER-X-SPEED) empty)))
+
+;(define (insert-invader loi) loi) ; Stub
+
+(define (insert-invader loi)
+  (cond [(empty? loi) (list (make-invader (random WIDTH) 0 INVADER-X-SPEED))]
+        [else (append loi
+                      (list (make-invader (random WIDTH)0 INVADER-X-SPEED)))]))
+
+
 ;; ---------------------------------------------------------------------------------------------
 ;; RENDER FUNCTIONS
 
@@ -325,7 +453,15 @@
 
 ;; Game -> Image
 ;; Render all currently existing objects in the Game object on the screen
-;; !!! Add tests and function definition
+(check-expect (render-all G0)
+              (render-tank T0
+                           (render-missiles empty
+                                            (render-invaders empty))))
+(check-expect (render-all G3)
+              (render-tank T1
+                           (render-missiles (list M1 M2)
+                                            (render-invaders (list I1 I2)))))
+
 ;(define (render_all s) BACKGROUND) ; Stub
 
 (define (render-all s)
@@ -402,5 +538,102 @@
 ;; ---------------------------------------------------------------------------------------------
 ;; KEYBOARD HANDLER FUNCTIONS
 
+
+
+;; Game KeyEvent -> Game
+;; Handle key presses for the game
+;; - left arrow  -> set tank direction to left
+;; - right arrow -> set tank direction to the right
+;; - space bar   -> fire a missile from the tanks current location upwards
+(check-expect (handle-key (make-game empty empty (make-tank 50 1)) "left") ; moving right, press left
+              (make-game empty empty (make-tank 50 -1)))
+(check-expect (handle-key (make-game empty empty (make-tank 50 -1)) "left") ; moving left, press left
+              (make-game empty empty (make-tank 50 -1)))
+(check-expect (handle-key (make-game empty empty (make-tank 50 1)) "right") ; moving right, press right
+              (make-game empty empty (make-tank 50 1)))
+(check-expect (handle-key (make-game empty empty (make-tank 50 -1)) "right") ; moving left, press right
+              (make-game empty empty (make-tank 50 1)))
+(check-expect (handle-key (make-game empty empty (make-tank 50 1)) "q") ; moving right, press 'q' (invalid input)
+              (make-game empty empty (make-tank 50 1)))
+(check-expect (handle-key (make-game empty empty (make-tank 50 -1)) "r") ; moving left, press 'r' (invalid input)
+              (make-game empty empty (make-tank 50 -1)))
+(check-expect (handle-key (make-game empty empty (make-tank 50 1)) " ") ; press space, empty missile list
+              (make-game empty (list (make-missile 50 (- HEIGHT TANK-HEIGHT/2))) (make-tank 50 1)))
+(check-expect (handle-key (make-game LOI2 LOM2 (make-tank 124 -1)) " ") ; press space, missile list with entries
+              (make-game LOI2 (cons (make-missile 124 (- HEIGHT TANK-HEIGHT/2)) LOM2) (make-tank 124 -1)))
+
+;(define (handle-key s ke) s) ; Stub
+
+(define (handle-key s ke)
+  (cond [(key=? ke " ") (make-game (game-invaders s)
+                                   (cons (make-missile (tank-x (game-tank s))
+                                                       (- HEIGHT TANK-HEIGHT/2))
+                                         (game-missiles s))
+                                   (game-tank s))]
+        [(key=? ke "left") (make-game (game-invaders s)
+                                      (game-missiles s)
+                                      (make-tank (tank-x (game-tank s))
+                                                 -1))]
+        [(key=? ke "right") (make-game (game-invaders s)
+                                       (game-missiles s)
+                                       (make-tank (tank-x (game-tank s))
+                                                  1))]
+        [else s]))
+
+
+
 ;; ---------------------------------------------------------------------------------------------
 ;; STOP GAME FUNCTIONS
+
+;; Game -> Boolean
+;; Returns True if an invader has landed, otherwise false
+(check-expect (invader-landed? G0) false)
+(check-expect (invader-landed? G1) false)
+(check-expect (invader-landed? G2) false)
+(check-expect (invader-landed? G3) true)
+
+;(define (invader-landed? s) false) ; Stub
+
+(define (invader-landed? s)
+  (landed-helper (game-invaders s)))
+
+
+;; ListOfInvader -> Boolean
+;; Helper to traverse the ListOfInvaders checking for landed condition
+(check-expect (landed-helper empty) false)
+(check-expect (landed-helper (list (make-invader 43 54 1.5))) false)
+(check-expect (landed-helper LOI2) true)
+
+;(define (landed-helper loi) false) ; Stub
+
+(define (landed-helper loinvader)
+  (cond [(empty? loinvader) false]   ;; Base case - empty list
+        [(>= (invader-y (first loinvader)) HEIGHT) true]
+        [else (landed-helper (rest loinvader))]))
+
+
+
+;; Game -> Image
+;; Displays a game over screen
+(check-expect (game-over G0)
+              (place-image/align (text "GAME OVER" 48 "red")
+                                 (/ WIDTH 2)
+                                 (/ HEIGHT 2)
+                                 "center"
+                                 "center"
+                                 BACKGROUND))
+
+;(define (game-over s) BACKGROUND) ; Stub
+
+(define (game-over s)
+  (place-image/align (text "GAME OVER" 48 "red")
+                                 (/ WIDTH 2)
+                                 (/ HEIGHT 2)
+                                 "center"
+                                 "center"
+                                 BACKGROUND))
+
+;; ---------------------------------------------------------------------------------------------
+;; Automatically run Main
+
+(main (make-game empty empty T0))

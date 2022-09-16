@@ -36,6 +36,8 @@
                      (rectangle 20 10 "solid" "black"))))   ;main body
 
 (define TANK-HEIGHT/2 (/ (image-height TANK) 2))
+(define INVADER-WIDTH/2 (/ (image-width INVADER) 2))
+(define INVADER-HEIGHT/2 (/ (image-height INVADER) 2))
 
 (define MISSILE (ellipse 5 15 "solid" "red"))
 
@@ -148,8 +150,8 @@
 
 (define (main s)
   (big-bang s                  ;; Game
-    (on-tick update_positions) ;; Game -> Game
-    (to-draw render_all)       ;; Game -> Image
+    (on-tick update-positions) ;; Game -> Game
+    (to-draw render-all)       ;; Game -> Image
     ))
 
 
@@ -164,7 +166,7 @@
 
 ;(define (update_positions s) s) ;; Stub
 
-(define (update_positions s)
+(define (update-positions s)
   (make-game (update-invaders (game-invaders s))
              (update-missiles (game-missiles s))
              (update-tank (game-tank s))))
@@ -201,12 +203,12 @@
               (make-invader (+ 150 (- INVADER-X-SPEED))
                             (+ 200 INVADER-Y-SPEED)
                             (- INVADER-X-SPEED)))
-(check-expect (update-invader (make-invader 1 200 -1.5)) ; Hit left wall
-              (make-invader (- (+ 1 -1.5))
+(check-expect (update-invader (make-invader (+ 1 INVADER-WIDTH/2) 200 -1.5)) ; Hit left wall
+              (make-invader (- (image-width INVADER) (+ 1 INVADER-WIDTH/2 -1.5))
                             (+ 200 INVADER-Y-SPEED)
                             (- -1.5)))
-(check-expect (update-invader (make-invader (- WIDTH 1) 200 1.5)) ; Hit right wall
-              (make-invader (- WIDTH (- (+ (- WIDTH 1) 1.5) WIDTH))
+(check-expect (update-invader (make-invader (- WIDTH (+ INVADER-WIDTH/2 1)) 200 1.5)) ; Hit right wall
+              (make-invader (- (- (* WIDTH 2) (image-width INVADER)) (+ (- WIDTH (+ INVADER-WIDTH/2 1)) 1.5))
                             (+ 200 INVADER-Y-SPEED)
                             (- 1.5)))
 (check-expect (update-invader (make-invader 100 (- HEIGHT 1) -1.5)) ; Land moving left
@@ -225,12 +227,12 @@
          (make-invader (+ (invader-x i) (invader-dx i))
                        HEIGHT
                        (invader-dx i))]
-        [(<= (+ (invader-x i) (invader-dx i)) 0)  ; Hit left wall
-         (make-invader (- (+ (invader-x i) (invader-dx i)))
+        [(<= (+ (invader-x i) (invader-dx i)) INVADER-WIDTH/2)  ; Hit left wall
+         (make-invader (- (image-width INVADER) (+ (invader-x i) (invader-dx i)))
                        (+ (invader-y i) INVADER-Y-SPEED)
                        (- (invader-dx i)))]
-        [(>= (+ (invader-x i) (invader-dx i)) WIDTH)  ; Hit right wall
-         (make-invader (- WIDTH (- (+ (invader-x i) (invader-dx i)) WIDTH))
+        [(>= (+ (invader-x i) (invader-dx i)) (- WIDTH INVADER-WIDTH/2))  ; Hit right wall
+         (make-invader (- (- (* WIDTH 2) (image-width INVADER)) (+ (invader-x i) (invader-dx i)))
                        (+ (invader-y i) INVADER-Y-SPEED)
                        (- (invader-dx i)))]
         [else ; Base case
@@ -286,14 +288,14 @@
 ;; Tank -> Tank
 ;; Moves the tank in its current direction, stop when hitting the edge of the screen
 ;; !!!
-(check-expect (update-tank (make-tank 0 -1)) ; Start at left wall
-              (make-tank 0 -1))
-(check-expect (update-tank (make-tank WIDTH 1)) ; Start at right wall
-              (make-tank WIDTH 1))
-(check-expect (update-tank (make-tank 1 -1)) ; Hit left wall
-              (make-tank 0 -1))
-(check-expect (update-tank (make-tank (- WIDTH 1) 1)) ; Hit right wall
-              (make-tank WIDTH 1))
+(check-expect (update-tank (make-tank TANK-HEIGHT/2 -1)) ; Start at left wall
+              (make-tank TANK-HEIGHT/2 -1))
+(check-expect (update-tank (make-tank (- WIDTH TANK-HEIGHT/2) 1)) ; Start at right wall
+              (make-tank (- WIDTH TANK-HEIGHT/2) 1))
+(check-expect (update-tank (make-tank (+ 1 TANK-HEIGHT/2) -1)) ; Hit left wall
+              (make-tank TANK-HEIGHT/2 -1))
+(check-expect (update-tank (make-tank (- (- WIDTH TANK-HEIGHT/2) 1) 1)) ; Hit right wall
+              (make-tank (- WIDTH TANK-HEIGHT/2) 1))
 (check-expect (update-tank (make-tank 50 -1)) ; Move left
               (make-tank (+ 50 (* -1 TANK-SPEED))
                          -1))
@@ -304,11 +306,11 @@
 ;(define (update-tank t) t) ; Stub
 
 (define (update-tank t)
-  (cond [(<=  (+ (tank-x t) (* (tank-dir t) TANK-SPEED)) 0) ; Hit left wall
-         (make-tank 0
+  (cond [(<=  (+ (tank-x t) (* (tank-dir t) TANK-SPEED)) TANK-HEIGHT/2) ; Hit left wall
+         (make-tank TANK-HEIGHT/2
                     (tank-dir t))]
-        [(>=  (+ (tank-x t) (* (tank-dir t) TANK-SPEED)) WIDTH) ; Hit right wall
-         (make-tank WIDTH
+        [(>=  (+ (tank-x t) (* (tank-dir t) TANK-SPEED)) (- WIDTH TANK-HEIGHT/2)) ; Hit right wall
+         (make-tank (- WIDTH TANK-HEIGHT/2)  
                     (tank-dir t))]
         [else
          (make-tank (+ (tank-x t) (* (tank-dir t) TANK-SPEED))
@@ -324,7 +326,78 @@
 ;; Game -> Image
 ;; Render all currently existing objects in the Game object on the screen
 ;; !!! Add tests and function definition
-(define (render_all s) BACKGROUND)
+;(define (render_all s) BACKGROUND) ; Stub
+
+(define (render-all s)
+  (render-tank (game-tank s) (render-missiles (game-missiles s) (render-invaders (game-invaders s)))))
+
+
+
+;; ListOfInvaders -> Image
+;; Render a list of invaders placed based on their x,y coordinates. Base case is blank background
+(check-expect (render-invaders empty) BACKGROUND)
+(check-expect (render-invaders (cons (make-invader 100 200 -1.5) empty))
+              (place-image INVADER 100 200 BACKGROUND))
+(check-expect (render-invaders (list (make-invader 100 200 -1.5) (make-invader 185 29 1.5)))
+              (place-image INVADER 100 200
+                           (place-image INVADER 185 29 BACKGROUND)))
+
+;(define (render-invaders loinvader) BACKGROUND) ; Stub
+
+(define (render-invaders loinvader)
+  (cond [(empty? loinvader) BACKGROUND]
+        [else (render-invader-on (first loinvader)
+                                 (render-invaders (rest loinvader)))]))
+
+
+
+;; Invader, Image -> Image
+;; Draws an individual invader at its x,y location on an existing image
+(check-expect (render-invader-on (make-invader 100 200 1.5) BACKGROUND)
+              (place-image INVADER 100 200 BACKGROUND))
+(check-expect (render-invader-on (make-invader 185 29 1.5) BACKGROUND)
+              (place-image INVADER 185 29 BACKGROUND))
+
+;(define (render-invader-on invader img) img)
+
+(define (render-invader-on invader img)
+  (place-image INVADER (invader-x invader) (invader-y invader) img)) 
+
+
+
+;; ListOfMissiles, Image -> Image
+;; Draws a list of missiles on an existing image
+(check-expect (render-missiles empty BACKGROUND) BACKGROUND)
+(check-expect (render-missiles (list (make-missile 12 200) (make-missile 175 23)) BACKGROUND)
+              (place-image MISSILE 12 200
+                           (place-image MISSILE 175 23 BACKGROUND)))
+
+;(define (render-missiles lom img) img) ; Stub
+
+(define (render-missiles lom img)
+  (cond [(empty? lom) img]
+        [else (place-image MISSILE
+                           (missile-x (first lom))
+                           (missile-y (first lom))
+                           (render-missiles (rest lom) img))]))
+
+
+
+;; Tank, Image -> Image
+;; Draws a tank at its specified x coordinate at the bottom of the screen of an existing image
+(check-expect (render-tank (make-tank 50 1) BACKGROUND)
+              (place-image TANK 50 (- HEIGHT TANK-HEIGHT/2) BACKGROUND))
+(check-expect (render-tank (make-tank TANK-HEIGHT/2 1) BACKGROUND) ; At left wall
+              (place-image TANK TANK-HEIGHT/2 (- HEIGHT TANK-HEIGHT/2) BACKGROUND))
+(check-expect (render-tank (make-tank (- WIDTH TANK-HEIGHT/2) 1) BACKGROUND) ; At right wall
+              (place-image TANK (- WIDTH TANK-HEIGHT/2) (- HEIGHT TANK-HEIGHT/2) BACKGROUND))
+
+;(define (render-tank t img) img) ; Stub
+
+(define (render-tank t img)
+  (place-image TANK (tank-x t) (- HEIGHT TANK-HEIGHT/2) img))
+
+
 
 ;; ---------------------------------------------------------------------------------------------
 ;; KEYBOARD HANDLER FUNCTIONS
